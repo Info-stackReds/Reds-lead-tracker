@@ -1,0 +1,111 @@
+// ============================================================
+// Red's Outdoor Design & Building — LSA Call Notification
+// Google Apps Script — READY TO USE
+// ============================================================
+
+var PUSHOVER_USER_KEY  = "utjj5bk363aav9n9x5nc9z39vecbza";
+var PUSHOVER_APP_TOKEN = "aaboydqvphjqg2y3a8a9wofk4ryxwh";
+var APP_URL            = "https://YOUR_APP_URL_HERE"; // paste your Lead Tracker URL here
+
+// ------------------------------------------------------------
+// checkForLSAEmails()
+// Runs every 2 minutes via trigger. Detects new LSA emails
+// and sends a push notification to your iPhone.
+// ------------------------------------------------------------
+function checkForLSAEmails() {
+  var threads = GmailApp.search(
+    'from:google-local-services@google.com is:unread',
+    0,
+    10
+  );
+
+  if (threads.length === 0) return;
+
+  threads.forEach(function(thread) {
+    var messages = thread.getMessages();
+    var msg = messages[messages.length - 1];
+
+    var body = msg.getPlainBody();
+
+    // Extract caller name
+    var nameMatch = body.match(/Customer[:\s]+([A-Za-z ]+)/i)
+                 || body.match(/Name[:\s]+([A-Za-z ]+)/i)
+                 || body.match(/Caller[:\s]+([A-Za-z ]+)/i);
+    var callerName = nameMatch ? nameMatch[1].trim() : "New Caller";
+
+    // Extract phone number
+    var phoneMatch = body.match(/(\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4})/);
+    var phone = phoneMatch ? phoneMatch[1].trim() : "";
+
+    // Extract service type
+    var serviceMatch = body.match(/Service[:\s]+([^\n]+)/i)
+                    || body.match(/Job type[:\s]+([^\n]+)/i);
+    var service = serviceMatch ? serviceMatch[1].trim() : "";
+
+    var notifTitle   = "New LSA Lead — Log It Now";
+    var notifMessage = callerName + (phone ? " · " + phone : "");
+    if (service) notifMessage += "\n" + service;
+
+    sendPushoverNotification(notifTitle, notifMessage, APP_URL);
+
+    thread.markRead();
+  });
+}
+
+// ------------------------------------------------------------
+// sendPushoverNotification()
+// ------------------------------------------------------------
+function sendPushoverNotification(title, message, url) {
+  var payload = {
+    token:     PUSHOVER_APP_TOKEN,
+    user:      PUSHOVER_USER_KEY,
+    title:     title,
+    message:   message,
+    url:       url,
+    url_title: "Open Lead Tracker",
+    sound:     "cashregister",
+    priority:  0
+  };
+
+  var options = {
+    method:             "post",
+    contentType:        "application/x-www-form-urlencoded",
+    payload:            payload,
+    muteHttpExceptions: true
+  };
+
+  try {
+    var response = UrlFetchApp.fetch("https://api.pushover.net/1/messages.json", options);
+    Logger.log("Pushover response: " + response.getContentText());
+  } catch(e) {
+    Logger.log("Pushover error: " + e.toString());
+  }
+}
+
+// ------------------------------------------------------------
+// createTrigger() — Run ONCE to start auto-monitoring
+// ------------------------------------------------------------
+function createTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    ScriptApp.deleteTrigger(t);
+  });
+
+  ScriptApp.newTrigger("checkForLSAEmails")
+    .timeBased()
+    .everyMinutes(2)
+    .create();
+
+  Logger.log("Done! Checking for LSA emails every 2 minutes.");
+}
+
+// ------------------------------------------------------------
+// testNotification() — Run ONCE to test your iPhone buzzes
+// ------------------------------------------------------------
+function testNotification() {
+  sendPushoverNotification(
+    "Red's Lead Tracker — Test",
+    "Setup is working! You will be notified every time an LSA lead comes in.",
+    APP_URL
+  );
+  Logger.log("Test sent — check your iPhone!");
+}
